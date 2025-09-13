@@ -709,6 +709,10 @@ func (r *IssueAlertResource) Create(ctx context.Context, req resource.CreateRequ
 		Projects:    []string{data.Project.ValueString()},
 	}
 
+	if data.FilterMatch.IsNull() {
+		body.FilterMatch = "all"
+	}
+
 	if !data.Conditions.IsNull() {
 		resp.Diagnostics.Append(data.Conditions.Unmarshal(&body.Conditions)...)
 	} else if data.ConditionsV2 != nil {
@@ -844,6 +848,10 @@ func (r *IssueAlertResource) Update(ctx context.Context, req resource.UpdateRequ
 		Owner:       data.Owner.ValueStringPointer(),
 		Environment: data.Environment.ValueStringPointer(),
 		Projects:    []string{data.Project.ValueString()},
+	}
+
+	if data.FilterMatch.IsNull() {
+		body.FilterMatch = "all"
 	}
 
 	if !data.Conditions.IsNull() {
