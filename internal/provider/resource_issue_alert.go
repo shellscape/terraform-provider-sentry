@@ -316,8 +316,8 @@ func (r *IssueAlertResource) Schema(ctx context.Context, req resource.SchemaRequ
 				},
 			},
 			"actions": schema.StringAttribute{
-				MarkdownDescription: "**Deprecated** in favor of `actions_v2`. A list of actions that take place when all required conditions and filters for the rule are met. In JSON string format.",
-				DeprecationMessage:  "Use `actions_v2` instead.",
+				MarkdownDescription: "**Deprecated** in favor of `actions_v2`. A list of actions that take place when all required conditions and filters for the rule are met. In JSON string format. This field will be removed in a future version.",
+				DeprecationMessage:  "Use `actions_v2` instead. The `actions` field will be removed in a future version. Please migrate to `actions_v2` which provides better type safety and validation.",
 				Optional:            true,
 				CustomType:          sentrytypes.LossyJsonType{},
 				Validators: []validator.String{
@@ -602,8 +602,11 @@ func (r *IssueAlertResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Required:            true,
 			}, []string{"all", "any"}),
 			"filter_match": tfutils.WithEnumStringAttribute(schema.StringAttribute{
-				MarkdownDescription: "A string determining which filters need to be true before any actions take place. Required when a value is provided for `filters`.",
+				MarkdownDescription: "A string determining which filters need to be true before any actions take place. Required when a value is provided for `filters`. Must be one of: `all`, `any`, or `none`.",
 				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.NoneOf(""),
+				},
 			}, []string{"all", "any", "none"}),
 			"frequency": schema.Int64Attribute{
 				MarkdownDescription: "Perform actions at most once every `X` minutes for this issue.",
