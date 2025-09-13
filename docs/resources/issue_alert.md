@@ -511,7 +511,7 @@ resource "sentry_issue_alert" "notification_alert" {
 - `conditions` (String, Deprecated) **Deprecated** in favor of `conditions_v2`. A list of triggers that determine when the rule fires. In JSON string format.
 - `conditions_v2` (Attributes List) A list of triggers that determine when the rule fires. (see [below for nested schema](#nestedatt--conditions_v2))
 - `environment` (String) Perform issue alert in a specific environment.
-- `filter_match` (String) A string determining which filters need to be true before any actions take place. Required when a value is provided for `filters`. Valid values are: `all`, `any`, and `none`.
+- `filter_match` (String) A string determining which filters need to be true before any actions take place. Defaults to `all` when not specified. Valid values are: `all`, `any`, and `none`.
 - `filters` (String, Deprecated) **Deprecated** in favor of `filters_v2`. A list of filters that determine if a rule fires after the necessary conditions have been met. In JSON string format.
 - `filters_v2` (Attributes List) A list of filters that determine if a rule fires after the necessary conditions have been met. (see [below for nested schema](#nestedatt--filters_v2))
 - `owner` (String) The ID of the team or user that owns the rule.

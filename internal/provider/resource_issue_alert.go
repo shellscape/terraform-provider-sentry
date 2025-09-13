@@ -602,9 +602,8 @@ func (r *IssueAlertResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Required:            true,
 			}, []string{"all", "any"}),
 			"filter_match": tfutils.WithEnumStringAttribute(schema.StringAttribute{
-				MarkdownDescription: "A string determining which filters need to be true before any actions take place. Required when a value is provided for `filters`.",
+				MarkdownDescription: "A string determining which filters need to be true before any actions take place. Defaults to `all` when not specified.",
 				Optional:            true,
-				Computed:            true,
 			}, []string{"all", "any", "none"}),
 			"frequency": schema.Int64Attribute{
 				MarkdownDescription: "Perform actions at most once every `X` minutes for this issue.",
@@ -700,20 +699,21 @@ func (r *IssueAlertResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
+	filterMatch := data.FilterMatch.ValueString()
+	if data.FilterMatch.IsNull() || filterMatch == "" {
+		filterMatch = "all"
+	}
+
 	body := apiclient.CreateProjectRuleJSONRequestBody{
 		Name:        data.Name.ValueString(),
 		ActionMatch: data.ActionMatch.ValueString(),
-		FilterMatch: data.FilterMatch.ValueString(),
+		FilterMatch: filterMatch,
 		Frequency:   data.Frequency.ValueInt64(),
 		Owner:       data.Owner.ValueStringPointer(),
 		Environment: data.Environment.ValueStringPointer(),
 		Projects:    []string{data.Project.ValueString()},
 	}
 
-	if data.FilterMatch.IsNull() {
-		body.FilterMatch = "all"
-		data.FilterMatch = types.StringValue("all")
-	}
 
 	if !data.Conditions.IsNull() {
 		resp.Diagnostics.Append(data.Conditions.Unmarshal(&body.Conditions)...)
@@ -842,20 +842,21 @@ func (r *IssueAlertResource) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
+	filterMatch := data.FilterMatch.ValueString()
+	if data.FilterMatch.IsNull() || filterMatch == "" {
+		filterMatch = "all"
+	}
+
 	body := apiclient.UpdateProjectRuleJSONRequestBody{
 		Name:        data.Name.ValueString(),
 		ActionMatch: data.ActionMatch.ValueString(),
-		FilterMatch: data.FilterMatch.ValueString(),
+		FilterMatch: filterMatch,
 		Frequency:   data.Frequency.ValueInt64(),
 		Owner:       data.Owner.ValueStringPointer(),
 		Environment: data.Environment.ValueStringPointer(),
 		Projects:    []string{data.Project.ValueString()},
 	}
 
-	if data.FilterMatch.IsNull() {
-		body.FilterMatch = "all"
-		data.FilterMatch = types.StringValue("all")
-	}
 
 	if !data.Conditions.IsNull() {
 		resp.Diagnostics.Append(data.Conditions.Unmarshal(&body.Conditions)...)
