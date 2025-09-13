@@ -604,6 +604,7 @@ func (r *IssueAlertResource) Schema(ctx context.Context, req resource.SchemaRequ
 			"filter_match": tfutils.WithEnumStringAttribute(schema.StringAttribute{
 				MarkdownDescription: "A string determining which filters need to be true before any actions take place. Required when a value is provided for `filters`.",
 				Optional:            true,
+				Computed:            true,
 			}, []string{"all", "any", "none"}),
 			"frequency": schema.Int64Attribute{
 				MarkdownDescription: "Perform actions at most once every `X` minutes for this issue.",
@@ -711,6 +712,7 @@ func (r *IssueAlertResource) Create(ctx context.Context, req resource.CreateRequ
 
 	if data.FilterMatch.IsNull() {
 		body.FilterMatch = "all"
+		data.FilterMatch = types.StringValue("all")
 	}
 
 	if !data.Conditions.IsNull() {
@@ -852,6 +854,7 @@ func (r *IssueAlertResource) Update(ctx context.Context, req resource.UpdateRequ
 
 	if data.FilterMatch.IsNull() {
 		body.FilterMatch = "all"
+		data.FilterMatch = types.StringValue("all")
 	}
 
 	if !data.Conditions.IsNull() {
