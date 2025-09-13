@@ -604,6 +604,7 @@ func (r *IssueAlertResource) Schema(ctx context.Context, req resource.SchemaRequ
 			"filter_match": tfutils.WithEnumStringAttribute(schema.StringAttribute{
 				MarkdownDescription: "A string determining which filters need to be true before any actions take place. Defaults to `all` when not specified.",
 				Optional:            true,
+				Computed:            true,
 			}, []string{"all", "any", "none"}),
 			"frequency": schema.Int64Attribute{
 				MarkdownDescription: "Perform actions at most once every `X` minutes for this issue.",
@@ -702,6 +703,7 @@ func (r *IssueAlertResource) Create(ctx context.Context, req resource.CreateRequ
 	filterMatch := data.FilterMatch.ValueString()
 	if data.FilterMatch.IsNull() || filterMatch == "" {
 		filterMatch = "all"
+		data.FilterMatch = types.StringValue("all")
 	}
 
 	body := apiclient.CreateProjectRuleJSONRequestBody{
@@ -845,6 +847,7 @@ func (r *IssueAlertResource) Update(ctx context.Context, req resource.UpdateRequ
 	filterMatch := data.FilterMatch.ValueString()
 	if data.FilterMatch.IsNull() || filterMatch == "" {
 		filterMatch = "all"
+		data.FilterMatch = types.StringValue("all")
 	}
 
 	body := apiclient.UpdateProjectRuleJSONRequestBody{
