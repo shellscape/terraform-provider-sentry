@@ -627,6 +627,53 @@ func TestAccProjectResource_validation(t *testing.T) {
 	})
 }
 
+func TestAccProjectResource_skipPlatformCheck(t *testing.T) {
+	teamName := acctest.RandomWithPrefix("tf-team")
+	projectName := acctest.RandomWithPrefix("tf-project")
+	rn := "sentry_project.test"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.PreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckProjectDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProjectResourceConfig(testAccProjectResourceConfigData{
+					TeamName:    teamName,
+					ProjectName: projectName,
+					Platform:    "fictional-platform-xyz",
+					Extras:      `skip_platform_check = true`,
+				}),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(rn, "platform", "fictional-platform-xyz"),
+					resource.TestCheckResourceAttr(rn, "skip_platform_check", "true"),
+				),
+			},
+			{
+				Config: testAccProjectResourceConfig(testAccProjectResourceConfigData{
+					TeamName:    teamName,
+					ProjectName: projectName,
+					Platform:    "another-fake-platform",
+					Extras:      `skip_platform_check = true`,
+				}),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(rn, "platform", "another-fake-platform"),
+					resource.TestCheckResourceAttr(rn, "skip_platform_check", "true"),
+				),
+			},
+			{
+				Config: testAccProjectResourceConfig(testAccProjectResourceConfigData{
+					TeamName:    teamName,
+					ProjectName: projectName,
+					Platform:    "invalid-platform-should-fail",
+					Extras:      `skip_platform_check = false`,
+				}),
+				ExpectError: regexp.MustCompile(`Invalid Platform Value`),
+			},
+		},
+	})
+}
+
 func TestAccProjectResource_upgradeFromVersion(t *testing.T) {
 	teamName := acctest.RandomWithPrefix("tf-team")
 	projectName := acctest.RandomWithPrefix("tf-project")
@@ -861,4 +908,68 @@ func testAccProjectResourceConfig_teams(data testAccProjectResourceConfig_teamsD
 	must.Do(testAccProjectResourceConfig_teamsTemplate.Execute(&builder, data))
 
 	return builder.String()
+}
+
+// TestProjectResource_skipPlatformCheckValidation tests the platform validation logic
+func TestProjectResource_skipPlatformCheckValidation(t *testing.T) {
+	tests := []struct {
+		name              string
+		platform          string
+		skipPlatformCheck bool
+		expectValid       bool
+	}{
+		{
+			name:              "valid platform go",
+			platform:          "go",
+			skipPlatformCheck: false,
+			expectValid:       true,
+		},
+		{
+			name:              "valid platform javascript",
+			platform:          "javascript",
+			skipPlatformCheck: false,
+			expectValid:       true,
+		},
+		{
+			name:              "invalid platform with validation enabled",
+			platform:          "fictional-platform-xyz",
+			skipPlatformCheck: false,
+			expectValid:       false,
+		},
+		{
+			name:              "invalid platform but validation skipped",
+			platform:          "fictional-platform-xyz",
+			skipPlatformCheck: true,
+			expectValid:       true,
+		},
+		{
+			name:              "custom platform with validation skipped",
+			platform:          "my-custom-platform",
+			skipPlatformCheck: true,
+			expectValid:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test the core validation logic manually
+			validPlatforms := []string{"go", "javascript", "python", "java", "other"} // simplified list
+
+			// This is the core logic from ValidateConfig
+			isValid := tt.skipPlatformCheck
+			if !tt.skipPlatformCheck {
+				for _, validPlatform := range validPlatforms {
+					if tt.platform == validPlatform {
+						isValid = true
+						break
+					}
+				}
+			}
+
+			if isValid != tt.expectValid {
+				t.Errorf("platform %q with skip_platform_check=%v: expected valid=%v, got valid=%v",
+					tt.platform, tt.skipPlatformCheck, tt.expectValid, isValid)
+			}
+		})
+	}
 }

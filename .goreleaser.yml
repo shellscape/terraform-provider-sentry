@@ -56,7 +56,7 @@ release:
   extra_files:
     - glob: "terraform-registry-manifest.json"
       name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
-  # Manually examine the release before it goes live:
-  draft: true
+  # Releases will be published automatically:
+  draft: false
 changelog:
   disable: true

@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -136,6 +137,7 @@ type ProjectResourceModel struct {
 	Name                 types.String              `tfsdk:"name"`
 	Slug                 types.String              `tfsdk:"slug"`
 	Platform             types.String              `tfsdk:"platform"`
+	SkipPlatformCheck    types.Bool                `tfsdk:"skip_platform_check"`
 	DefaultRules         types.Bool                `tfsdk:"default_rules"`
 	DefaultKey           types.Bool                `tfsdk:"default_key"`
 	InternalId           types.String              `tfsdk:"internal_id"`
@@ -190,6 +192,7 @@ func (m *ProjectResourceModel) Fill(ctx context.Context, project apiclient.Proje
 var _ resource.Resource = &ProjectResource{}
 var _ resource.ResourceWithConfigure = &ProjectResource{}
 var _ resource.ResourceWithImportState = &ProjectResource{}
+var _ resource.ResourceWithValidateConfig = &ProjectResource{}
 
 func NewProjectResource() resource.Resource {
 	return &ProjectResource{}
@@ -230,10 +233,14 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"platform": tfutils.WithEnumStringAttribute(schema.StringAttribute{
-				MarkdownDescription: "The platform for this project. Use `other` for platforms not listed.",
+			"platform": schema.StringAttribute{
+				MarkdownDescription: "The platform for this project. Use `other` for platforms not listed. Set `skip_platform_check = true` to accept any platform value.",
 				Optional:            true,
-			}, sentrydata.Platforms),
+			},
+			"skip_platform_check": schema.BoolAttribute{
+				MarkdownDescription: "Skip validation of the platform field against the list of known platforms. When set to true, any string value is accepted for the platform field.",
+				Optional:            true,
+			},
 			"default_rules": schema.BoolAttribute{
 				Description: "Whether to create a default issue alert. Defaults to true where the behavior is to alert the user on every new issue.",
 				Optional:    true,
@@ -937,4 +944,49 @@ func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	tfutils.ImportStateTwoPartId(ctx, "organization", req, resp)
+}
+
+func (r *ProjectResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data ProjectResourceModel
+
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Only validate platform if it's set, skip_platform_check is not true, and platform is not null
+	if !data.Platform.IsNull() && !data.Platform.IsUnknown() &&
+		(data.SkipPlatformCheck.IsNull() || data.SkipPlatformCheck.IsUnknown() || !data.SkipPlatformCheck.ValueBool()) {
+
+		platformValue := data.Platform.ValueString()
+		validPlatforms := sentrydata.Platforms
+
+		// Check if the platform value is in the list of valid platforms
+		isValid := false
+		for _, validPlatform := range validPlatforms {
+			if platformValue == validPlatform {
+				isValid = true
+				break
+			}
+		}
+
+		if !isValid {
+			validValues := sliceutils.Map(func(v string) string {
+				return "`" + v + "`"
+			}, validPlatforms)
+
+			var validValuesMsg string
+			if len(validValues) > 1 {
+				validValuesMsg = "Valid values are: " + strings.Join(validValues[:len(validValues)-1], ", ") + ", and " + validValues[len(validValues)-1] + "."
+			} else {
+				validValuesMsg = "Valid values are: " + validValues[0] + "."
+			}
+
+			resp.Diagnostics.AddAttributeError(
+				path.Root("platform"),
+				"Invalid Platform Value",
+				fmt.Sprintf("The platform value %q is not valid. %s To skip platform validation, set skip_platform_check = true.", platformValue, validValuesMsg),
+			)
+		}
+	}
 }
