@@ -1,3 +1,4 @@
 package sentrydata
 
-//go:generate uv run generate.py
+// Note: Removed //go:generate uv run generate.py
+// Platform data is now maintained manually in platforms.go

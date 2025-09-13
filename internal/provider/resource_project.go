@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -130,23 +131,24 @@ func (m *ProjectClientSecurityResourceModel) Fill(ctx context.Context, project a
 }
 
 type ProjectResourceModel struct {
-	Id                   types.String              `tfsdk:"id"`
-	Organization         types.String              `tfsdk:"organization"`
-	Teams                types.Set                 `tfsdk:"teams"`
-	Name                 types.String              `tfsdk:"name"`
-	Slug                 types.String              `tfsdk:"slug"`
-	Platform             types.String              `tfsdk:"platform"`
-	DefaultRules         types.Bool                `tfsdk:"default_rules"`
-	DefaultKey           types.Bool                `tfsdk:"default_key"`
-	InternalId           types.String              `tfsdk:"internal_id"`
-	Features             types.Set                 `tfsdk:"features"`
-	DigestsMinDelay      types.Int64               `tfsdk:"digests_min_delay"`
-	DigestsMaxDelay      types.Int64               `tfsdk:"digests_max_delay"`
-	ResolveAge           types.Int64               `tfsdk:"resolve_age"`
-	Filters              types.Object              `tfsdk:"filters"`
-	FingerprintingRules  sentrytypes.TrimmedString `tfsdk:"fingerprinting_rules"`
-	GroupingEnhancements sentrytypes.TrimmedString `tfsdk:"grouping_enhancements"`
-	ClientSecurity       types.Object              `tfsdk:"client_security"`
+	Id                      types.String              `tfsdk:"id"`
+	Organization            types.String              `tfsdk:"organization"`
+	Teams                   types.Set                 `tfsdk:"teams"`
+	Name                    types.String              `tfsdk:"name"`
+	Slug                    types.String              `tfsdk:"slug"`
+	Platform                types.String              `tfsdk:"platform"`
+	SkipPlatformValidation  types.Bool                `tfsdk:"skip_platform_validation"`
+	DefaultRules            types.Bool                `tfsdk:"default_rules"`
+	DefaultKey              types.Bool                `tfsdk:"default_key"`
+	InternalId              types.String              `tfsdk:"internal_id"`
+	Features                types.Set                 `tfsdk:"features"`
+	DigestsMinDelay         types.Int64               `tfsdk:"digests_min_delay"`
+	DigestsMaxDelay         types.Int64               `tfsdk:"digests_max_delay"`
+	ResolveAge              types.Int64               `tfsdk:"resolve_age"`
+	Filters                 types.Object              `tfsdk:"filters"`
+	FingerprintingRules     sentrytypes.TrimmedString `tfsdk:"fingerprinting_rules"`
+	GroupingEnhancements    sentrytypes.TrimmedString `tfsdk:"grouping_enhancements"`
+	ClientSecurity          types.Object              `tfsdk:"client_security"`
 }
 
 func (m *ProjectResourceModel) Fill(ctx context.Context, project apiclient.Project) (diags diag.Diagnostics) {
@@ -190,6 +192,7 @@ func (m *ProjectResourceModel) Fill(ctx context.Context, project apiclient.Proje
 var _ resource.Resource = &ProjectResource{}
 var _ resource.ResourceWithConfigure = &ProjectResource{}
 var _ resource.ResourceWithImportState = &ProjectResource{}
+var _ resource.ResourceWithValidateConfig = &ProjectResource{}
 
 func NewProjectResource() resource.Resource {
 	return &ProjectResource{}
@@ -230,10 +233,16 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"platform": tfutils.WithEnumStringAttribute(schema.StringAttribute{
-				MarkdownDescription: "The platform for this project. Use `other` for platforms not listed.",
+			"platform": schema.StringAttribute{
+				MarkdownDescription: "The platform for this project. Use `other` for platforms not listed. Valid values are: " +
+					strings.Join(sliceutils.Map(func(v string) string { return "`" + v + "`" }, sentrydata.AllPlatformStrings()[:10]), ", ") +
+					", and many more. Set `skip_platform_validation = true` to accept any platform value.",
+				Optional: true,
+			},
+			"skip_platform_validation": schema.BoolAttribute{
+				MarkdownDescription: "Skip validation of the platform field against the list of known platforms. When set to true, any string value is accepted for the platform field.",
 				Optional:            true,
-			}, sentrydata.Platforms),
+			},
 			"default_rules": schema.BoolAttribute{
 				Description: "Whether to create a default issue alert. Defaults to true where the behavior is to alert the user on every new issue.",
 				Optional:    true,
@@ -937,4 +946,40 @@ func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	tfutils.ImportStateTwoPartId(ctx, "organization", req, resp)
+}
+
+func (r *ProjectResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data ProjectResourceModel
+
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Only validate platform if it's set, skip_platform_validation is not true, and platform is not null
+	if !data.Platform.IsNull() && !data.Platform.IsUnknown() &&
+		(data.SkipPlatformValidation.IsNull() || data.SkipPlatformValidation.IsUnknown() || !data.SkipPlatformValidation.ValueBool()) {
+
+		platformValue := sentrydata.Platform(data.Platform.ValueString())
+
+		if !platformValue.IsValid() {
+			validPlatforms := sentrydata.AllPlatformStrings()
+			validValuesStr := sliceutils.Map(func(v string) string {
+				return "`" + v + "`"
+			}, validPlatforms)
+
+			var validValuesMsg string
+			if len(validValuesStr) > 1 {
+				validValuesMsg = "Valid values are: " + strings.Join(validValuesStr[:len(validValuesStr)-1], ", ") + ", and " + validValuesStr[len(validValuesStr)-1] + "."
+			} else {
+				validValuesMsg = "Valid values are: " + validValuesStr[0] + "."
+			}
+
+			resp.Diagnostics.AddAttributeError(
+				path.Root("platform"),
+				"Invalid Platform Value",
+				fmt.Sprintf("The platform value %q is not valid. %s To skip platform validation, set skip_platform_validation = true.", data.Platform.ValueString(), validValuesMsg),
+			)
+		}
+	}
 }

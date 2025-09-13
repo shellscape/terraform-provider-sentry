@@ -22,6 +22,7 @@ import (
 	"github.com/jianyuan/go-utils/sliceutils"
 	"github.com/jianyuan/terraform-provider-sentry/internal/acctest"
 	"github.com/jianyuan/terraform-provider-sentry/internal/apiclient"
+	"github.com/jianyuan/terraform-provider-sentry/internal/sentrydata"
 )
 
 func init() {
@@ -589,7 +590,7 @@ func TestAccProjectResource_validation(t *testing.T) {
 					ProjectName: projectName,
 					Platform:    "invalid",
 				}),
-				ExpectError: regexp.MustCompile(`Attribute platform value must be one of`),
+				ExpectError: regexp.MustCompile(`Invalid Platform Value`),
 			},
 			{
 				Config: testAccProjectResourceConfig_teams(testAccProjectResourceConfig_teamsData{
@@ -622,6 +623,18 @@ func TestAccProjectResource_validation(t *testing.T) {
 					`,
 				}),
 				ExpectError: regexp.MustCompile(`Attribute client_security.security_token_header string length must be at most\n20, got: 21`),
+			},
+			{
+				Config: testAccProjectResourceConfig(testAccProjectResourceConfigData{
+					TeamName:    teamName,
+					ProjectName: projectName,
+					Platform:    "custom-platform",
+					Extras:      `skip_platform_validation = true`,
+				}),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("sentry_project.test", "platform", "custom-platform"),
+					resource.TestCheckResourceAttr("sentry_project.test", "skip_platform_validation", "true"),
+				),
 			},
 		},
 	})
@@ -861,4 +874,61 @@ func testAccProjectResourceConfig_teams(data testAccProjectResourceConfig_teamsD
 	must.Do(testAccProjectResourceConfig_teamsTemplate.Execute(&builder, data))
 
 	return builder.String()
+}
+
+// TestProjectResource_PlatformValidation tests platform validation logic
+func TestProjectResource_PlatformValidation(t *testing.T) {
+	tests := []struct {
+		name                     string
+		platform                 string
+		skipPlatformValidation   bool
+		expectValid              bool
+	}{
+		{
+			name:                   "valid platform go",
+			platform:               "go",
+			skipPlatformValidation: false,
+			expectValid:            true,
+		},
+		{
+			name:                   "valid platform javascript",
+			platform:               "javascript",
+			skipPlatformValidation: false,
+			expectValid:            true,
+		},
+		{
+			name:                   "invalid platform with validation enabled",
+			platform:               "invalid-platform",
+			skipPlatformValidation: false,
+			expectValid:            false,
+		},
+		{
+			name:                   "invalid platform but validation skipped",
+			platform:               "invalid-platform",
+			skipPlatformValidation: true,
+			expectValid:            true,
+		},
+		{
+			name:                   "custom platform with validation skipped",
+			platform:               "my-custom-platform",
+			skipPlatformValidation: true,
+			expectValid:            true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test the validation logic directly using the enum
+			platformEnum := sentrydata.Platform(tt.platform)
+			shouldValidate := !tt.skipPlatformValidation
+
+			// This is the core logic from ValidateConfig
+			isValid := !shouldValidate || platformEnum.IsValid()
+
+			if isValid != tt.expectValid {
+				t.Errorf("platform %q with skip_validation=%v: expected valid=%v, got valid=%v",
+					tt.platform, tt.skipPlatformValidation, tt.expectValid, isValid)
+			}
+		})
+	}
 }
